@@ -1,9 +1,12 @@
 """
-ABC Ltd. - Customer Churn Predictor (simple version)
+ABC Ltd. - Customer Churn Predictor
 
 Uses the two models trained in ABC_Ltd_Predictive_Analytics.ipynb:
     models/logistic_churn_model.pkl        -> churn probability
-    models/linear_monthly_charge_model.pkl -> expected monthly charge
+    models/linear_monthly_charge_model.pkl -> monthly charge (new customers)
+
+Existing customer: actual monthly/total charges -> churn model
+New customer:      services -> linear model -> estimated monthly charge -> churn model
 """
 
 from pathlib import Path
@@ -53,11 +56,24 @@ except FileNotFoundError:
 st.title("Customer Churn Predictor")
 st.write("Fill in customer details to predict if they will churn (leave).")
 
+customer_type = st.radio("Customer Type", ["Existing customer", "New customer"], horizontal=True)
+is_new = customer_type == "New customer"
+if is_new:
+    st.caption(
+        "New customer: the monthly charge is estimated by the Linear Regression model "
+        "from the services chosen, and churn is then predicted for their first month."
+    )
+else:
+    st.caption("Existing customer: enter the actual tenure and charges from their account.")
+
 gender = st.selectbox("Gender", ["Female", "Male"])
 senior = st.selectbox("Senior Citizen", ["No", "Yes"])
 partner = st.selectbox("Partner", ["No", "Yes"])
 dependents = st.selectbox("Dependents", ["No", "Yes"])
-tenure = st.number_input("Tenure (months)", min_value=0, max_value=72, value=12, step=1)
+if is_new:
+    tenure = 1  # a new customer is treated as being in their first month
+else:
+    tenure = st.number_input("Tenure (months)", min_value=1, max_value=72, value=12, step=1)
 
 phone = st.selectbox("Phone Service", ["Yes", "No"])
 if phone == "Yes":
@@ -87,14 +103,16 @@ payment = st.selectbox(
     "Payment Method",
     ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
 )
-monthly = st.number_input("Monthly Charges", min_value=0.0, max_value=200.0, value=70.0, step=0.5)
-total = st.number_input(
-    "Total Charges",
-    min_value=0.0, max_value=10000.0,
-    value=float(round(tenure * monthly, 2)),
-    step=10.0,
-    help="Defaults to tenure × monthly charges. Change it if you know the actual amount.",
-)
+
+if not is_new:
+    monthly = st.number_input("Monthly Charges", min_value=0.0, max_value=200.0, value=70.0, step=0.5)
+    total = st.number_input(
+        "Total Charges",
+        min_value=0.0, max_value=10000.0,
+        value=float(round(tenure * monthly, 2)),
+        step=10.0,
+        help="Defaults to tenure × monthly charges. Change it if you know the actual amount.",
+    )
 
 # ------------------------------------------------------------------
 # Prediction
@@ -113,23 +131,31 @@ if st.button("Predict", type="primary"):
         "Contract": contract,
         "PaperlessBilling": paperless,
         "PaymentMethod": payment,
-        "MonthlyCharges": monthly,
-        "TotalCharges": total,
-    }])[LOGISTIC_FEATURES]
+    }])
 
-    probability = logistic_model.predict_proba(customer)[0][1]
-    will_churn = logistic_model.predict(customer)[0] == 1
+    if is_new:
+        # Step 1: Linear Regression estimates the monthly charge
+        monthly = float(linear_model.predict(customer[LINEAR_FEATURES])[0])
+        total = monthly  # first month: total paid so far = one month's charge
+
+    customer["MonthlyCharges"] = monthly
+    customer["TotalCharges"] = total
+
+    # Step 2 (both customer types): Logistic Regression predicts churn
+    probability = logistic_model.predict_proba(customer[LOGISTIC_FEATURES])[0][1]
+    will_churn = logistic_model.predict(customer[LOGISTIC_FEATURES])[0] == 1
     risk = classify_risk(probability)
-    expected_charge = linear_model.predict(customer[LINEAR_FEATURES])[0]
 
     st.subheader("Result")
+    if is_new:
+        st.info(f"**Estimated monthly charge (Linear Regression):** {monthly:.2f}")
+
     if will_churn:
         st.error(f"This customer is likely to CHURN ({probability:.1%} probability).")
     else:
         st.success(f"This customer is likely to STAY ({probability:.1%} churn probability).")
 
     st.write(f"**Risk category:** {risk}  (Low < 30%, Medium 30–60%, High ≥ 60%)")
-    st.write(f"**Expected monthly charge for this plan:** {expected_charge:.2f}")
 
 # ------------------------------------------------------------------
 # Model accuracy (test-set results from the notebook, 80/20 split)
