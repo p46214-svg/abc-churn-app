@@ -156,32 +156,3 @@ if st.button("Predict", type="primary"):
         st.success(f"This customer is likely to STAY ({probability:.1%} churn probability).")
 
     st.write(f"**Risk category:** {risk}  (Low < 30%, Medium 30–60%, High ≥ 60%)")
-
-# ------------------------------------------------------------------
-# Model accuracy (test-set results from the notebook, 80/20 split)
-# ------------------------------------------------------------------
-st.divider()
-st.subheader("Model Accuracy")
-st.caption("Measured on the 20% test set (1,407 customers) held back during training.")
-
-left, right = st.columns(2)
-with left:
-    st.write("**Churn model** (Logistic Regression)")
-    st.dataframe(
-        pd.DataFrame({
-            "Metric": ["Accuracy", "Precision", "Recall", "F1 Score", "ROC-AUC"],
-            "Value": ["80.53%", "65.15%", "57.49%", "0.6108", "0.8361"],
-        }),
-        hide_index=True,
-        width="stretch",
-    )
-with right:
-    st.write("**Monthly charge model** (Linear Regression)")
-    st.dataframe(
-        pd.DataFrame({
-            "Metric": ["R²", "MAE", "RMSE"],
-            "Value": ["0.9988", "0.78", "1.04"],
-        }),
-        hide_index=True,
-        width="stretch",
-    )
